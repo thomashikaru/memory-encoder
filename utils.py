@@ -5,6 +5,7 @@ import math
 from torch.nn.parameter import Parameter
 from torch.nn import functional as F
 import numpy as np
+import gensim, gensim.downloader
 
 
 class MemoryUnit(nn.Module):
@@ -27,13 +28,13 @@ class MemoryUnit(nn.Module):
 
     def forward(self, input):
         att_weight = F.linear(input, self.weight)  # Fea x Mem^T, (TxC) x (CxM) = TxM
-        att_weight = F.softmax(att_weight, dim=1)  # TxM
+        att_weight = F.softmax(att_weight, dim=0)  # TxM
         # ReLU based shrinkage, hard shrinkage for positive value
         if self.shrink_thres > 0:
             att_weight = hard_shrink_relu(att_weight, lambd=self.shrink_thres)
             # att_weight = F.softshrink(att_weight, lambd=self.shrink_thres)
             # normalize???
-            att_weight = F.normalize(att_weight, p=1, dim=1)
+            att_weight = F.normalize(att_weight, p=1, dim=0)
             # att_weight = F.softmax(att_weight, dim=1)
             # att_weight = self.hard_sparse_shrink_opt(att_weight)
         mem_trans = self.weight.permute(1, 0)  # Mem^T, MxC

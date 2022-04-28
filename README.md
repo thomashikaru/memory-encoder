@@ -16,3 +16,7 @@
     1. Loss function: joint reconstruction loss and binary cross entropy loss for recognition
     1. Backpropagate through autoencoder and memory unit parameters
     1. Model should learn to reconstruct the input while using the memory unit to recognize repeats
+1. Evaluate model
+    1. Test on both seen and unseen words (separately)
+    1. Get recognition accuracy for test words
+    1. Look for evidence of synonymy and polysemy effects
