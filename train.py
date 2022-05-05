@@ -16,33 +16,19 @@ from collections import defaultdict
 from numpy.linalg import norm
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import GPT2Tokenizer, GPT2Model
-
-
-class Experiment:
-    def __init__(self, args) -> None:
-        self.args = args
-
-    def get_training_data():
-        pass
-
-    def get_testing_data():
-        pass
-
-    def create_model():
-        pass
-
-    def run():
-        pass
+from sklearn.metrics import matthews_corrcoef as mcc
 
 
 class MemoryModel:
-    def __init__(self, dims, vae=False) -> None:
+    def __init__(self, dims, vae=False, noise=0.01, K=0.4) -> None:
         if vae:
             self.ae = MemoryVAE(dimensionality=dims)
         else:
             self.ae = MemoryEncoder(dimensionality=dims)
         self.history = set()
         self.history_latent = []
+        self.noise = noise
+        self.K = K
 
     def reset(self):
         model.history = set()
@@ -74,7 +60,7 @@ class MemoryModel:
             return closest, False
 
         buffer = np.array(self.history_latent)
-        buffer += np.random.normal(0, 0.05, size=buffer.shape)
+        buffer += np.random.normal(0, self.noise, size=buffer.shape)
         self.latent_history = list(buffer)
 
         decoded = np.array([self.ae.decode(torch.Tensor(x)).numpy() for x in buffer])
@@ -83,7 +69,7 @@ class MemoryModel:
 
         # logging.info(cos_sims.max())
 
-        is_repeat = cos_sims.max() > 0.4
+        is_repeat = cos_sims.max() > self.K
 
         self.history_latent.append(latent)
 
@@ -275,7 +261,7 @@ def train_vae(model, df, args):
         logging.info(f"Epoch {epoch} Loss: {epoch_loss}")
         epoch_losses.append(epoch_loss)
 
-    identifier = f"lr{args.lr:.0e}_epochs{args.epochs}_inner64_vae{args.vae}_generic{args.train_generic}"
+    identifier = f"lr{args.lr:.0e}_epochs{args.epochs}_inner64_vae{args.vae}_generic{args.train_generic}_{args.emb_method}"
 
     p = sns.lineplot(x=list(range(len(epoch_losses))), y=epoch_losses)
     p.set_xlabel("Epoch")
@@ -290,7 +276,7 @@ def test(model, df, use_latent):
         )
         output = defaultdict(list)
         model.reset()
-        words, embeddings, labels = create_train_seq(df)
+        words, embeddings, labels = create_train_seq(df, repeat_freq=0.4)
         for word, word_embedding, label in zip(words, embeddings, labels):
             input = torch.Tensor(word_embedding)
             if use_latent:
@@ -323,6 +309,8 @@ if __name__ == "__main__":
     parser.add_argument("--dims", type=int, default=300)
     parser.add_argument("--emb_method", default="w2v")
     parser.add_argument("--generic_train_size", type=int, default=10000)
+    parser.add_argument("--noise", type=float, default=0.01)
+    parser.add_argument("--K", type=float, default=0.4)
     args = parser.parse_args()
 
     # setup
@@ -330,38 +318,44 @@ if __name__ == "__main__":
     sns.set_style("dark")
 
     # conventional word embedding models
-    if args.emb_method == "w2v":
-        w2v = gensim.downloader.load("word2vec-google-news-300")
-    elif args.emb_method == "glove":
-        glove = read_glove_vectors_from_file(
-            "../../sentence_memorability/embeddings/glove.42B.300d.txt"
-        )
 
     # load experimental data
     df_test = pd.read_csv("embeddings/word_stimuli.csv")
     words = df_test["word_lower"]
     logging.info(f"Number of words: {len(words)}")
-    word_embeddings, oov_words = get_embeddings_word2vec(words)
+
+    if args.emb_method == "w2v":
+        w2v = gensim.downloader.load("word2vec-google-news-300")
+        word_embeddings, oov_words = get_embeddings_word2vec(words)
+    elif args.emb_method == "glove":
+        glove = read_glove_vectors_from_file(
+            "../../sentence_memorability/embeddings/glove.42B.300d.txt"
+        )
+        word_embeddings, oov_words = get_embeddings_glove(words)
+
     logging.info(oov_words)
     df_test["embedding"] = list(word_embeddings)
     train_dfs = [df_test]
 
     # load training data
-    if args.train_generic:
+    if args.train_generic and not args.test_only:
         df_train = pd.read_csv(
             "embeddings/unigram_freq.csv", names=["word_lower", "freq"]
         ).iloc[: args.generic_train_size, :]
         words = df_train["word_lower"]
         logging.info(f"Number of words: {len(words)}")
-        word_embeddings, oov_words = get_embeddings_word2vec(words)
+        if args.emb_method == "w2v":
+            word_embeddings, oov_words = get_embeddings_word2vec(words)
+        elif args.emb_method == "glove":
+            word_embeddings, oov_words = get_embeddings_glove(words)
         df_train["embedding"] = list(word_embeddings)
         train_dfs.append(df_train)
 
     # Model Initialization
-    model = MemoryModel(dims=args.dims, vae=args.vae)
+    model = MemoryModel(dims=args.dims, vae=args.vae, noise=args.noise, K=args.K)
     logging.debug(model.ae)
 
-    identifier = f"lr{args.lr:.0e}_epochs{args.epochs}_inner64_vae{args.vae}_generic{args.train_generic}"
+    identifier = f"lr{args.lr:.0e}_epochs{args.epochs}_inner64_vae{args.vae}_generic{args.train_generic}_{args.emb_method}"
     checkpoint_name = f"checkpoints/{identifier}.pt"
 
     # train model
@@ -382,6 +376,7 @@ if __name__ == "__main__":
     for i in range(args.test_runs):
         output_dfs.append(test(model, df_test, args.use_latent))
     output_df = pd.concat(output_dfs)
+    print("MCC:", mcc(output_df["label"], output_df["response"]))
     output_df.to_csv(
         f"csv/{identifier}-latent{args.use_latent}.csv", index=False,
     )
