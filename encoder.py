@@ -1,6 +1,5 @@
 import torch
 import torch.nn.functional as F
-from utils import MemoryUnit
 
 # Creating a PyTorch class
 class MemoryEncoder(torch.nn.Module):
@@ -11,15 +10,9 @@ class MemoryEncoder(torch.nn.Module):
             torch.nn.Linear(dimensionality, 128),
             torch.nn.ReLU(),
             torch.nn.Linear(128, 64),
-            # torch.nn.ReLU(),
-            # torch.nn.Linear(64, 32),
         )
 
-        # self.memory = MemoryUnit(mem_dim=100, fea_dim=36)
-
         self.decoder = torch.nn.Sequential(
-            # torch.nn.Linear(32, 64),
-            # torch.nn.ReLU(),
             torch.nn.Linear(64, 128),
             torch.nn.ReLU(),
             torch.nn.Linear(128, dimensionality),
@@ -39,10 +32,6 @@ class MemoryEncoder(torch.nn.Module):
     def forward(self, x):
         h = self.encode(x)
         z = self.decode(h)
-
-        # mem_output = self.memory(encoded)
-        # decoded = self.decoder(mem_output["output"])
-        # predicted = self.predictor(decoded)
         return h, z
 
 
@@ -57,19 +46,11 @@ class MemoryVAE(torch.nn.Module):
         self.enc2 = torch.nn.Linear(128, 64)
         self.enc3 = torch.nn.Linear(128, 64)
 
-        # self.enc3 = torch.nn.Linear(64, 32)
-        # self.enc4 = torch.nn.Linear(64, 32)
-
-        # self.memory = MemoryUnit(mem_dim=100, fea_dim=36)
-
-        # self.dec1 = torch.nn.Linear(32, 64)
-
         self.dec1 = torch.nn.Linear(64, 128)
         self.dec2 = torch.nn.Linear(128, dimensionality)
 
     def encode(self, x):
         x = F.relu(self.enc1(x))
-        # x = F.relu(self.enc2(x))
         mu = self.enc2(x)
         sigma = torch.exp(self.enc3(x))
 
@@ -79,7 +60,6 @@ class MemoryVAE(torch.nn.Module):
 
     def decode(self, h):
         z = F.relu(self.dec1(h))
-        # z = F.relu(self.dec2(z))
         z = torch.sigmoid(self.dec2(z))
         return z
 

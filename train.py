@@ -34,7 +34,20 @@ class MemoryModel:
         model.history = set()
         model.history_latent = []
 
-    def test_word(self, word, input):
+    def test_word_basic(self, word, input):
+        """simulates presentation of a single word stimulus using basic strategy
+        - the word is passed through the autoencoder, yielding a reconstruction
+        - the closest word in embedding space to the reconstruction is found
+        - this is stored in the memory buffer
+        - model reports a repeat if the current word is already present in the buffer
+
+        Args:
+            word (str): current word stimulus
+            input (tensor): tensor corresponding to word embedding of word
+
+        Returns:
+            Tuple[str, boolean]: closest word and boolean response (true if repeat)
+        """
         latent, reconstructed = self.ae(input)
 
         closest = w2v.most_similar(
@@ -47,13 +60,25 @@ class MemoryModel:
         return closest, is_repeat
 
     def test_word_latent(self, word, input):
+        """simulates presentation of a single word stimulus using latent strategy
+        - the word is passed through the autoencoder, yielding latent and reconstructed vectors
+        - random noise is added to the content of the memory buffer
+        - the contents of the memory buffer are passed through the decoder
+        - cosine similarity of input to vectors decoded from noisy latent vectors
+        - the latent vector is added to the memory buffer
+
+
+        Args:
+            word (str): input word
+            input (tensor): input word embedding
+
+        Returns:
+            Tuple[str, boolean]: empty and boolean response (true if repeat)
+        """
         latent, reconstructed = self.ae(input)
         latent = latent.detach().numpy()
 
         closest = ""
-        # closest = w2v.most_similar(
-        #     positive=[reconstructed.detach().numpy()], negative=[], topn=1
-        # )[0][0]
 
         if len(self.history_latent) == 0:
             self.history_latent.append(latent)
@@ -66,8 +91,6 @@ class MemoryModel:
         decoded = np.array([self.ae.decode(torch.Tensor(x)).numpy() for x in buffer])
 
         cos_sims = cosine_similarity(input.reshape(1, -1), decoded)
-
-        # logging.info(cos_sims.max())
 
         is_repeat = cos_sims.max() > self.K
 

@@ -1,6 +1,3 @@
-from lib2to3.pgen2.tokenize import StopTokenizing
-from os import stat, stat_result, sysconf_names
-from turtle import ycor
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -17,7 +14,7 @@ def make_graph(x, y, prefix, scatter=True):
     sns.regplot(
         data=df1, x=x, y=y, ax=g.ax_joint, scatter=scatter, x_bins=10,
     )
-    plt.savefig(f"img/{prefix}{x}", dpi=100)
+    plt.savefig(f"img/{prefix}{x}", dpi=100, bbox_inches="tight")
 
 
 if __name__ == "__main__":
@@ -27,6 +24,7 @@ if __name__ == "__main__":
     parser.add_argument("--out_prefix", default="")
     args = parser.parse_args()
 
+    # read in stimuli and create mappings from word to features
     df_stim = pd.read_csv("embeddings/word_stimuli.csv")
     meaning_dict = dict(zip(df_stim["word_lower"], df_stim["# meanings (human)"]))
     synonym_dict = dict(zip(df_stim["word_lower"], df_stim["# synonyms (human)"]))
@@ -37,8 +35,10 @@ if __name__ == "__main__":
         zip(df_stim["word_lower"], df_stim["GloVe distinctiveness"])
     )
 
+    # read in test results
     df = pd.read_csv(args.csv)
 
+    # apply predictors
     df["num_meanings"] = df["word"].replace(meaning_dict)
     df["num_synonyms"] = df["word"].replace(synonym_dict)
     df["frequency"] = df["word"].replace(freq_dict)
@@ -46,28 +46,29 @@ if __name__ == "__main__":
     df["familiarity"] = df["word"].replace(familiarity_dict)
     df["distinctiveness"] = df["word"].replace(distinctiveness_dict)
 
+    # calculate scores
     df["false_negative"] = ((df["label"] == 1) & (df["response"] == 0)).astype(int)
     df["false_positive"] = ((df["label"] == 0) & (df["response"] == 1)).astype(int)
     df["true_negative"] = ((df["label"] == 0) & (df["response"] == 0)).astype(int)
     df["true_positive"] = ((df["label"] == 1) & (df["response"] == 1)).astype(int)
     df["correct"] = (df["label"] == df["response"]).astype(int)
 
+    # filter for only target repeats
     df = df[df.label == 1]
 
-    print(
-        df[
-            [
-                "label",
-                "false_positive",
-                "false_negative",
-                "true_positive",
-                "true_negative",
-            ]
-        ].describe()
-    )
+    cols = [
+        "label",
+        "false_positive",
+        "false_negative",
+        "true_positive",
+        "true_negative",
+    ]
+    print(df[cols].describe())
 
+    # get average scores per word
     df1 = df.groupby("word").mean().reset_index()
 
+    # make graphs
     make_graph("num_meanings", "correct", args.out_prefix)
     make_graph("num_synonyms", "correct", args.out_prefix)
     make_graph("concreteness", "correct", args.out_prefix)
